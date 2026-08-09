@@ -1,5 +1,8 @@
 # RAG Chatbot — MVP (built from your BRD)
 
+[![CI](https://github.com/Raheel32/Simple_RAG_Chatbot/actions/workflows/ci.yml/badge.svg)](https://github.com/Raheel32/Simple_RAG_Chatbot/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A free/local RAG (Retrieval-Augmented Generation) chatbot: upload documents,
 ask questions, get answers grounded in those documents with page-level
 source citations. No paid API keys needed.
