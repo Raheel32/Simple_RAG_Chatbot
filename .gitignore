@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+venv/
+.env
+uploaded_docs/
+chroma_db/
+metadata.db
