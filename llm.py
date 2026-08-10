@@ -68,3 +68,18 @@ def generate_answer(question: str, chunks: list) -> str:
             f"(`ollama serve`), and that you've pulled the model with "
             f"`ollama pull {OLLAMA_MODEL}`."
         )
+    except requests.exceptions.Timeout:
+        # Connection succeeded but no response came back in time — usually
+        # also means Ollama isn't actually running/listening on that port,
+        # or the model is still loading for the first time.
+        raise RuntimeError(
+            f"Ollama at {OLLAMA_BASE_URL} did not respond in time. "
+            f"Make sure Ollama is running (`ollama serve`) and that you've "
+            f"pulled the model with `ollama pull {OLLAMA_MODEL}`. If this is "
+            f"your first request, the model may still be loading — try again "
+            f"in a minute."
+        )
+    except requests.exceptions.RequestException as e:
+        # Catch-all for any other network-level failure so it never
+        # surfaces as a raw, unhandled 500 to the user.
+        raise RuntimeError(f"Error contacting Ollama: {e}")
