@@ -20,7 +20,7 @@ the most semantically similar ones (FR-05).
 
 import os
 import uuid
-import fitz  # PyMuPDF
+import pymupdf as fitz  # PyMuPDF — 'fitz' import name is deprecated, but keeping the alias so the rest of this file's fitz.* calls don't need renaming
 import docx
 import chromadb
 from sentence_transformers import SentenceTransformer
