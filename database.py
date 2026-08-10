@@ -31,7 +31,7 @@ def get_connection():
 
 
 def init_db():
-    """Create the documents table if it doesn't already exist."""
+    """Create the documents and messages tables if they don't already exist."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
@@ -44,6 +44,20 @@ def init_db():
             status TEXT NOT NULL
         )
         """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS messages (
+            id SERIAL PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL
+        )
+        """
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_messages_session ON messages (session_id, created_at)"
     )
     conn.commit()
     cur.close()
@@ -83,6 +97,61 @@ def delete_document(doc_id: str):
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("DELETE FROM documents WHERE id = %s", (doc_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+# --- Conversation history -------------------------------------------------
+# Each browser tab gets its own session_id (generated client-side). Turns
+# are stored per session so follow-up questions can reference earlier ones
+# ("what about the ghee version?").
+
+def add_message(session_id: str, role: str, content: str):
+    """role is 'user' or 'assistant'."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO messages (session_id, role, content, created_at) VALUES (%s, %s, %s, %s)",
+        (session_id, role, content, datetime.utcnow()),
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def get_recent_messages(session_id: str, limit: int = 6):
+    """
+    Returns the last `limit` messages for a session, oldest first, ready
+    to drop straight into the LLM prompt. `limit` counts individual
+    messages (so limit=6 is roughly the last 3 question/answer pairs) —
+    kept small on purpose since a longer history means a longer prompt,
+    which means slower generation, especially on CPU.
+    """
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
+        """
+        SELECT role, content FROM (
+            SELECT role, content, created_at FROM messages
+            WHERE session_id = %s
+            ORDER BY created_at DESC
+            LIMIT %s
+        ) recent
+        ORDER BY created_at ASC
+        """,
+        (session_id, limit),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def clear_session(session_id: str):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM messages WHERE session_id = %s", (session_id,))
     conn.commit()
     cur.close()
     conn.close()
