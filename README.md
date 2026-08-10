@@ -106,6 +106,25 @@ where you can:
 2. Wait a few seconds for it to be processed
 3. Ask a question about it in the chat box
 
+## 5b. (Optional) Run the Streamlit frontend instead
+
+There's also a Streamlit UI (`streamlit_app.py`) that talks to the same
+FastAPI backend over HTTP — it's a separate frontend, not a replacement,
+so **both servers need to be running at once**:
+
+```bash
+# Terminal 1 — the backend (same as step 5 above)
+uvicorn main:app --reload
+
+# Terminal 2 — the Streamlit frontend
+streamlit run streamlit_app.py
+```
+
+Streamlit opens automatically at **http://localhost:8501**. It has the same
+features as the HTML UI (upload, chat, sources, New chat) — pick whichever
+one you prefer, or run both side by side against the same backend and same
+documents.
+
 ## 6. API endpoints (if you want to test with curl/Postman instead of the UI)
 
 ```bash
