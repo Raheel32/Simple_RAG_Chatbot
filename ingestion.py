@@ -80,22 +80,53 @@ def extract_text_with_pages(file_path: str, ext: str):
 # --- Step 2: Chunking -------------------------------------------------------
 def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP):
     """
-    Simple sliding-window chunker. Splits `text` into pieces of
-    `chunk_size` characters, each overlapping the previous one by
-    `overlap` characters so we don't lose context at chunk boundaries.
+    Line-aware chunker. Groups whole lines together up to ~chunk_size
+    characters, WITHOUT ever splitting a line in half.
+
+    This matters a lot for line-per-record data (like a price list where
+    each product is one line: "IKHLAS OIL 500 ML   255   238.75   0").
+    A naive fixed-character window can cut a line in half, separating a
+    product name from its price across two different chunks — which
+    breaks retrieval for exactly that kind of document. Grouping by
+    whole lines keeps every record intact in at least one chunk.
+
+    A handful of overlapping lines are carried into the next chunk so
+    a record near a chunk boundary still has surrounding context.
     """
     text = text.strip()
     if not text:
         return []
 
+    lines = [line for line in text.split("\n") if line.strip()]
+    if not lines:
+        return []
+
     chunks = []
-    start = 0
-    while start < len(text):
-        end = start + chunk_size
-        chunk = text[start:end].strip()
-        if chunk:
-            chunks.append(chunk)
-        start += chunk_size - overlap
+    current_lines = []
+    current_len = 0
+
+    for line in lines:
+        line_len = len(line) + 1  # +1 for the newline joining it back
+        if current_lines and current_len + line_len > chunk_size:
+            chunks.append("\n".join(current_lines))
+            # carry the last few lines forward as overlap, budgeted by
+            # character count rather than a fixed line count
+            overlap_lines = []
+            overlap_len = 0
+            for prev_line in reversed(current_lines):
+                overlap_len += len(prev_line) + 1
+                if overlap_len > overlap:
+                    break
+                overlap_lines.insert(0, prev_line)
+            current_lines = overlap_lines
+            current_len = sum(len(l) + 1 for l in current_lines)
+
+        current_lines.append(line)
+        current_len += line_len
+
+    if current_lines:
+        chunks.append("\n".join(current_lines))
+
     return chunks
 
 
