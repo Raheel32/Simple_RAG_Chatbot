@@ -27,7 +27,7 @@ from config import UPLOAD_DIR
 
 app = FastAPI(title="RAG Chatbot", version="1.0")
 
-# Create the SQLite metadata table on startup (safe to call every time)
+# Create the PostgreSQL tables on startup (safe to call every time)
 database.init_db()
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
@@ -35,6 +35,7 @@ ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
 
 class AskRequest(BaseModel):
     question: str
+    session_id: str | None = None  # groups turns into a conversation; omit for a one-off question
 
 
 # --------------------------------------------------------------------------
@@ -81,13 +82,19 @@ def ask_question(payload: AskRequest):
     if not question:
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
+    session_id = payload.session_id
+
     try:
         chunks = retrieval.retrieve_relevant_chunks(question)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error searching documents: {e}")
 
+    # Pull recent history for this session (empty list if no session_id,
+    # or if this is the first message in a new one).
+    history = database.get_recent_messages(session_id) if session_id else []
+
     try:
-        answer = llm.generate_answer(question, chunks)
+        answer = llm.generate_answer(question, chunks, history)
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
@@ -100,7 +107,18 @@ def ask_question(payload: AskRequest):
             seen.add(key)
             sources.append({"filename": c["filename"], "page_number": c["page_number"]})
 
-    return {"answer": answer, "sources": sources}
+    # Store this turn so the NEXT question in this session can reference it.
+    if session_id:
+        database.add_message(session_id, "user", question)
+        database.add_message(session_id, "assistant", answer)
+
+    return {"answer": answer, "sources": sources, "session_id": session_id}
+
+
+@app.delete("/api/conversations/{session_id}")
+def clear_conversation(session_id: str):
+    database.clear_session(session_id)
+    return {"status": "cleared", "session_id": session_id}
 
 
 # --------------------------------------------------------------------------
