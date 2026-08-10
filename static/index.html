@@ -87,8 +87,13 @@
 
 <div id="main">
   <div id="chatHeader">
-    <h1>RAG Chatbot</h1>
-    <p>Answers are grounded only in the documents you upload.</p>
+    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+      <div>
+        <h1>RAG Chatbot</h1>
+        <p>Answers are grounded only in the documents you upload.</p>
+      </div>
+      <button id="newChatBtn" style="background:#1d2029; color:var(--muted); border:1px solid var(--border); border-radius:8px; padding:6px 12px; font-size:12px; cursor:pointer;">New chat</button>
+    </div>
   </div>
   <div id="messages">
     <div class="empty">Upload a document, then ask a question about it.</div>
@@ -106,6 +111,12 @@ const docList = document.getElementById('docList');
 const messages = document.getElementById('messages');
 const questionInput = document.getElementById('questionInput');
 const sendBtn = document.getElementById('sendBtn');
+const newChatBtn = document.getElementById('newChatBtn');
+
+// One session per browser tab, so follow-up questions ("what about the
+// ghee version?") can reference earlier turns. Regenerated on page load
+// and whenever "New chat" is clicked.
+let sessionId = crypto.randomUUID();
 
 dropzone.addEventListener('click', () => fileInput.click());
 
@@ -174,7 +185,7 @@ async function sendQuestion() {
     const res = await fetch('/api/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question })
+      body: JSON.stringify({ question, session_id: sessionId })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Something went wrong');
@@ -184,6 +195,12 @@ async function sendQuestion() {
   }
   sendBtn.disabled = false;
 }
+
+newChatBtn.addEventListener('click', async () => {
+  await fetch(`/api/conversations/${sessionId}`, { method: 'DELETE' });
+  sessionId = crypto.randomUUID();
+  messages.innerHTML = '<div class="empty">Upload a document, then ask a question about it.</div>';
+});
 
 sendBtn.addEventListener('click', sendQuestion);
 questionInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendQuestion(); });
