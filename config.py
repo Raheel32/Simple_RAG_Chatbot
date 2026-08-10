@@ -25,12 +25,12 @@ EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 # --- Chunking ------------------------------------------------------------
 # How big each text chunk is (in characters) and how much consecutive
 # chunks overlap, so we don't cut a sentence in half and lose context.
-CHUNK_SIZE = 800
-CHUNK_OVERLAP = 150
+CHUNK_SIZE = 500
+CHUNK_OVERLAP = 100
 
 # --- Retrieval -----------------------------------------------------------
 # How many chunks to pull back from the vector DB per question.
-TOP_K = 4
+TOP_K = 3
 
 # --- LLM (Ollama - free, runs on your own machine) ------------------------
 # 1. Install Ollama from https://ollama.com
