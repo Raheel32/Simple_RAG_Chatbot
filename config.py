@@ -12,10 +12,19 @@ import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploaded_docs")   # original files saved here
 CHROMA_DIR = os.path.join(BASE_DIR, "chroma_db")        # vector database files
-DB_PATH = os.path.join(BASE_DIR, "metadata.db")         # SQLite metadata (FR-03)
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(CHROMA_DIR, exist_ok=True)
+
+# --- PostgreSQL metadata DB (FR-03) ---------------------------------------
+# Set these via environment variables if your setup differs from the
+# defaults (e.g. a different password). On Windows PowerShell:
+#   $env:POSTGRES_PASSWORD = "your_password"
+POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "localhost")
+POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
+POSTGRES_DB = os.environ.get("POSTGRES_DB", "rag_chatbot")
+POSTGRES_USER = os.environ.get("POSTGRES_USER", "postgres")
+POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "postgres")
 
 # --- Embeddings (free, runs locally, no API key needed) ----------------
 # "all-MiniLM-L6-v2" is a small, fast, well-regarded sentence-embedding
