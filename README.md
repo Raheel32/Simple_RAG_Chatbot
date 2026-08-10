@@ -25,7 +25,7 @@ source citations. No paid API keys needed.
 - Embeddings: `sentence-transformers` (`all-MiniLM-L6-v2`) — runs on your CPU
 - Vector DB: Chroma (local, file-based — no server to run)
 - LLM: Ollama (local model, e.g. `llama3.2`)
-- Metadata DB: SQLite (single file — swap for PostgreSQL later if you need multi-user)
+- Metadata DB: PostgreSQL
 
 ## 1. Prerequisites
 
@@ -44,7 +44,40 @@ ollama pull llama3.2
 Ollama runs a local server automatically on `http://localhost:11434`. If it's
 not running, start it with `ollama serve`.
 
-## 3. Set up the Python project
+## 3. Set up PostgreSQL
+
+You need a running PostgreSQL server with a `rag_chatbot` database.
+
+```bash
+# Using createdb (comes with PostgreSQL):
+createdb -U postgres rag_chatbot
+```
+
+If that prompts for a password and you're not sure what it is, you can also
+create it via `psql`:
+
+```bash
+psql -U postgres
+# then at the psql prompt:
+CREATE DATABASE rag_chatbot;
+\q
+```
+
+By default the app connects as user `postgres` on `localhost:5432` with
+password `postgres`. If your setup differs, set these before running the
+app (PowerShell):
+
+```powershell
+$env:POSTGRES_PASSWORD = "your_actual_password"
+```
+
+(Same idea for `POSTGRES_USER`, `POSTGRES_HOST`, `POSTGRES_PORT`,
+`POSTGRES_DB` if any of those differ too — see `config.py`.)
+
+The `documents` table itself is created automatically the first time you
+run the app — no manual schema setup needed beyond creating the database.
+
+## 4. Set up the Python project
 
 ```bash
 cd rag_chatbot
@@ -61,7 +94,7 @@ pip install -r requirements.txt
 The first run will download the embedding model (~90MB) automatically — this
 only happens once.
 
-## 4. Run the server
+## 5. Run the server
 
 ```bash
 uvicorn main:app --reload
@@ -73,7 +106,7 @@ where you can:
 2. Wait a few seconds for it to be processed
 3. Ask a question about it in the chat box
 
-## 5. API endpoints (if you want to test with curl/Postman instead of the UI)
+## 6. API endpoints (if you want to test with curl/Postman instead of the UI)
 
 ```bash
 # Upload a document
@@ -91,13 +124,14 @@ curl -X POST http://127.0.0.1:8000/api/ask \
 curl -X DELETE http://127.0.0.1:8000/api/documents/<document_id>
 ```
 
-## 6. How it works, step by step (matches BRD section 10)
+## 7. How it works, step by step (matches BRD section 10)
 
 1. **Upload**: file is saved to `uploaded_docs/`.
 2. **Extraction**: `ingestion.py` reads text per page (PDF) or as a whole
    (DOCX/TXT) using PyMuPDF / python-docx.
-3. **Chunking**: each page's text is split into ~800-character overlapping
-   chunks so we don't lose context at boundaries.
+3. **Chunking**: each page's text is split line-by-line into ~500-character
+   groups of whole lines (never cutting a line in half), so a product row
+   or sentence never gets separated from itself across two chunks.
 4. **Embedding**: each chunk is converted into a vector using
    `sentence-transformers` — this vector captures the *meaning* of the text.
 5. **Storage**: chunk text + vector + metadata (filename, page number) go
@@ -113,18 +147,18 @@ curl -X DELETE http://127.0.0.1:8000/api/documents/<document_id>
 9. **Answer + Source**: the answer and the filename/page it came from are
    returned to the chat UI.
 
-## 7. Things to try next (from the BRD's "Future Enhancements")
+## 8. Things to try next (from the BRD's "Future Enhancements")
 
-- Swap SQLite → PostgreSQL if multiple people will manage documents at once
 - Add conversation history / memory across turns
 - Add simple login for the Admin role vs. Normal User role
 - Add a "confidence" indicator based on the retrieval distance score
   (already returned by `retrieval.py`, just not shown in the UI yet)
 
-## 8. Common issues
+## 9. Common issues
 
 | Problem | Fix |
 |---|---|
 | `Could not reach Ollama` error | Run `ollama serve`, and make sure `ollama pull llama3.2` completed |
+| Postgres connection error on startup | Confirm the server is running and the `rag_chatbot` database exists; check `POSTGRES_PASSWORD` matches your actual password |
 | Upload says "No extractable text found" | The PDF is likely scanned images, not real text — you'd need OCR (out of scope for this MVP) |
 | Slow first request | The embedding model and Ollama model both need to "warm up" on first use — subsequent requests are faster |
