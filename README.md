@@ -115,10 +115,14 @@ curl -X POST -F "file=@Employee_Handbook.pdf" http://127.0.0.1:8000/api/document
 # List uploaded documents
 curl http://127.0.0.1:8000/api/documents
 
-# Ask a question
+# Ask a question (session_id is optional — include it to enable follow-up
+# questions like "what about the other size?" referencing earlier turns)
 curl -X POST http://127.0.0.1:8000/api/ask \
   -H "Content-Type: application/json" \
-  -d '{"question": "What is the annual leave policy?"}'
+  -d '{"question": "What is the annual leave policy?", "session_id": "any-string-you-pick"}'
+
+# Clear a conversation's history
+curl -X DELETE http://127.0.0.1:8000/api/conversations/<session_id>
 
 # Delete a document
 curl -X DELETE http://127.0.0.1:8000/api/documents/<document_id>
@@ -149,7 +153,11 @@ curl -X DELETE http://127.0.0.1:8000/api/documents/<document_id>
 
 ## 8. Things to try next (from the BRD's "Future Enhancements")
 
-- Add conversation history / memory across turns
+- Query rewriting: right now, retrieval only sees the raw question, not
+  the conversation history — so "what about the ghee version?" alone
+  won't semantically match "IKHLAS GHEE" as well as a reformulated query
+  would. A common upgrade is a small LLM call that rewrites the follow-up
+  into a standalone question before it hits retrieval.
 - Add simple login for the Admin role vs. Normal User role
 - Add a "confidence" indicator based on the retrieval distance score
   (already returned by `retrieval.py`, just not shown in the UI yet)
