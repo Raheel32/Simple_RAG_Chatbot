@@ -53,8 +53,12 @@ def generate_answer(question: str, chunks: list) -> str:
                 "system": SYSTEM_PROMPT,
                 "prompt": prompt,
                 "stream": False,
+                "options": {
+                    "temperature": 0,      # deterministic — good for factual lookups, not creative writing
+                    "num_predict": 200,    # caps response length so it can't ramble on and slow things down
+                },
             },
-            timeout=120,
+            timeout=180,
         )
         response.raise_for_status()
         data = response.json()
