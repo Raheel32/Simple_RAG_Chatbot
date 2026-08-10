@@ -81,7 +81,10 @@ def ask_question(payload: AskRequest):
     if not question:
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
-    chunks = retrieval.retrieve_relevant_chunks(question)
+    try:
+        chunks = retrieval.retrieve_relevant_chunks(question)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error searching documents: {e}")
 
     try:
         answer = llm.generate_answer(question, chunks)
