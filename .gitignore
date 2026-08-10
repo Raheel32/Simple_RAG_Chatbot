@@ -4,4 +4,3 @@ venv/
 .env
 uploaded_docs/
 chroma_db/
-metadata.db
