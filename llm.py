@@ -21,29 +21,41 @@ Rules:
 - If the answer is not clearly contained in the CONTEXT, reply with
   exactly this sentence and nothing else: "{NO_ANSWER_PHRASE}"
 - Keep answers concise and directly address the question.
+- Recent conversation turns may be included below the context. Use them
+  only to understand what the user is referring to (e.g. "it", "that
+  one", "the other size") — the CONTEXT is still the only source for
+  facts in your answer, never something said earlier in the conversation.
 """
 
 
-def build_prompt(question: str, chunks: list) -> str:
+def build_prompt(question: str, chunks: list, history: list = None) -> str:
     if not chunks:
         context = "(no relevant context found)"
     else:
         context = "\n\n".join(
             f"[Source: {c['filename']}, Page {c['page_number']}]\n{c['text']}" for c in chunks
         )
-    return f"CONTEXT:\n{context}\n\nQUESTION:\n{question}"
+
+    history_block = ""
+    if history:
+        turns = "\n".join(f"{h['role'].capitalize()}: {h['content']}" for h in history)
+        history_block = f"RECENT CONVERSATION (for reference only, not a source of facts):\n{turns}\n\n"
+
+    return f"{history_block}CONTEXT:\n{context}\n\nQUESTION:\n{question}"
 
 
-def generate_answer(question: str, chunks: list) -> str:
+def generate_answer(question: str, chunks: list, history: list = None) -> str:
     """
-    Calls Ollama's /api/generate endpoint with the retrieved context.
+    Calls Ollama's /api/generate endpoint with the retrieved context and,
+    optionally, recent conversation turns so follow-up questions like
+    "what about the ghee version?" can be understood.
     If retrieval found nothing at all, we skip the LLM call entirely
     and return the "not found" fallback directly (also cheaper/faster).
     """
     if not chunks:
         return NO_ANSWER_PHRASE
 
-    prompt = build_prompt(question, chunks)
+    prompt = build_prompt(question, chunks, history)
 
     try:
         response = requests.post(
