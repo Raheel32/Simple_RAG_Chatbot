@@ -12,11 +12,20 @@ Streamlit then opens automatically at http://localhost:8501, while the
 FastAPI backend keeps running at http://127.0.0.1:8000 underneath it.
 """
 
+import os
 import uuid
 import requests
 import streamlit as st
 
-API_BASE_URL = "http://127.0.0.1:8000"
+# Points at your FastAPI backend. Locally this defaults to your machine;
+# once deployed, set this via Streamlit Cloud's "Secrets" (Settings ->
+# Secrets, as API_BASE_URL = "https://your-app.up.railway.app") so the
+# hosted frontend talks to your hosted backend instead of localhost.
+try:
+    API_BASE_URL = st.secrets.get("API_BASE_URL", os.environ.get("API_BASE_URL", "http://127.0.0.1:8000"))
+except Exception:
+    # st.secrets raises if no secrets.toml exists at all (normal for local dev)
+    API_BASE_URL = os.environ.get("API_BASE_URL", "http://127.0.0.1:8000")
 
 st.set_page_config(page_title="RAG Chatbot", page_icon="📄", layout="wide")
 
