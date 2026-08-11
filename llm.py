@@ -176,7 +176,7 @@ def rewrite_query(question: str, history: list) -> str:
 
 def build_prompt(question: str, chunks: list, history: list = None) -> str:
     if not chunks:
-        context = "(no relevant context found)"
+        context = "(no documents have been uploaded yet, or none matched this question)"
     else:
         context = "\n\n".join(
             f"[Source: {c['filename']}, Page {c['page_number']}]\n{c['text']}" for c in chunks
@@ -195,12 +195,13 @@ def generate_answer(question: str, chunks: list, history: list = None) -> str:
     Calls the configured LLM provider with the retrieved context and,
     optionally, recent conversation turns so follow-up questions like
     "what about the ghee version?" can be understood.
-    If retrieval found nothing at all, we skip the LLM call entirely
-    and return the "not found" fallback directly (also cheaper/faster).
-    """
-    if not chunks:
-        return NO_ANSWER_PHRASE
 
+    We always call the LLM, even when chunks is empty (e.g. no documents
+    uploaded yet) — the system prompt handles that case itself, replying
+    naturally to conversational messages and only using the "not found"
+    fallback for factual questions it genuinely can't answer. A hardcoded
+    empty-chunks shortcut would incorrectly refuse even a plain "hi".
+    """
     prompt = build_prompt(question, chunks, history)
     answer = _call_llm(SYSTEM_PROMPT, prompt, num_predict=200, timeout=180)
     return answer or NO_ANSWER_PHRASE
