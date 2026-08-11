@@ -28,6 +28,91 @@ Rules:
 """
 
 
+REWRITE_SYSTEM_PROMPT = """You rewrite follow-up questions into standalone
+questions using the conversation so far. Rules:
+- If the question is already standalone (doesn't depend on earlier turns),
+  return it EXACTLY as given, unchanged.
+- Otherwise, rewrite it to include whatever context it's implicitly
+  referring to (e.g. "it", "that one", "the other size").
+- Output ONLY the rewritten question. No explanation, no quotes, no
+  extra text.
+"""
+
+
+def _call_ollama(system_prompt: str, prompt: str, num_predict: int, timeout: int = 180) -> str:
+    """Shared low-level call to Ollama's /api/generate, with consistent
+    error handling used by both answer generation and query rewriting."""
+    try:
+        response = requests.post(
+            f"{OLLAMA_BASE_URL}/api/generate",
+            json={
+                "model": OLLAMA_MODEL,
+                "system": system_prompt,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0,      # deterministic — good for factual lookups, not creative writing
+                    "num_predict": num_predict,
+                },
+            },
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        return response.json().get("response", "").strip()
+
+    except requests.exceptions.ConnectionError:
+        # This is the #1 error beginners hit: Ollama isn't running.
+        raise RuntimeError(
+            "Could not reach Ollama at "
+            f"{OLLAMA_BASE_URL}. Make sure Ollama is installed and running "
+            f"(`ollama serve`), and that you've pulled the model with "
+            f"`ollama pull {OLLAMA_MODEL}`."
+        )
+    except requests.exceptions.Timeout:
+        # Connection succeeded but no response came back in time — usually
+        # also means Ollama isn't actually running/listening on that port,
+        # or the model is still loading for the first time.
+        raise RuntimeError(
+            f"Ollama at {OLLAMA_BASE_URL} did not respond in time. "
+            f"Make sure Ollama is running (`ollama serve`) and that you've "
+            f"pulled the model with `ollama pull {OLLAMA_MODEL}`. If this is "
+            f"your first request, the model may still be loading — try again "
+            f"in a minute."
+        )
+    except requests.exceptions.RequestException as e:
+        # Catch-all for any other network-level failure so it never
+        # surfaces as a raw, unhandled 500 to the user.
+        raise RuntimeError(f"Error contacting Ollama: {e}")
+
+
+def rewrite_query(question: str, history: list) -> str:
+    """
+    Rewrites a follow-up question into a standalone one, using recent
+    conversation turns, so RETRIEVAL (not just the final answer) can
+    semantically match on the full intent — e.g. "what about the ghee
+    version?" -> "what is the price of Ikhlas Ghee?".
+
+    This is a small, separate LLM call before retrieval even happens.
+    It costs extra latency, so it's skipped entirely when there's no
+    history to rewrite against (first message in a conversation).
+
+    If this call fails for any reason (Ollama down, timeout, etc.), we
+    fall back to the original question rather than failing the whole
+    request — query rewriting is a nice-to-have, not essential.
+    """
+    if not history:
+        return question
+
+    turns = "\n".join(f"{h['role'].capitalize()}: {h['content']}" for h in history)
+    prompt = f"Conversation so far:\n{turns}\n\nFollow-up question: {question}\n\nStandalone question:"
+
+    try:
+        rewritten = _call_ollama(REWRITE_SYSTEM_PROMPT, prompt, num_predict=60, timeout=30)
+        return rewritten or question
+    except RuntimeError:
+        return question
+
+
 def build_prompt(question: str, chunks: list, history: list = None) -> str:
     if not chunks:
         context = "(no relevant context found)"
@@ -56,46 +141,5 @@ def generate_answer(question: str, chunks: list, history: list = None) -> str:
         return NO_ANSWER_PHRASE
 
     prompt = build_prompt(question, chunks, history)
-
-    try:
-        response = requests.post(
-            f"{OLLAMA_BASE_URL}/api/generate",
-            json={
-                "model": OLLAMA_MODEL,
-                "system": SYSTEM_PROMPT,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "temperature": 0,      # deterministic — good for factual lookups, not creative writing
-                    "num_predict": 200,    # caps response length so it can't ramble on and slow things down
-                },
-            },
-            timeout=180,
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data.get("response", "").strip() or NO_ANSWER_PHRASE
-
-    except requests.exceptions.ConnectionError:
-        # This is the #1 error beginners hit: Ollama isn't running.
-        raise RuntimeError(
-            "Could not reach Ollama at "
-            f"{OLLAMA_BASE_URL}. Make sure Ollama is installed and running "
-            f"(`ollama serve`), and that you've pulled the model with "
-            f"`ollama pull {OLLAMA_MODEL}`."
-        )
-    except requests.exceptions.Timeout:
-        # Connection succeeded but no response came back in time — usually
-        # also means Ollama isn't actually running/listening on that port,
-        # or the model is still loading for the first time.
-        raise RuntimeError(
-            f"Ollama at {OLLAMA_BASE_URL} did not respond in time. "
-            f"Make sure Ollama is running (`ollama serve`) and that you've "
-            f"pulled the model with `ollama pull {OLLAMA_MODEL}`. If this is "
-            f"your first request, the model may still be loading — try again "
-            f"in a minute."
-        )
-    except requests.exceptions.RequestException as e:
-        # Catch-all for any other network-level failure so it never
-        # surfaces as a raw, unhandled 500 to the user.
-        raise RuntimeError(f"Error contacting Ollama: {e}")
+    answer = _call_ollama(SYSTEM_PROMPT, prompt, num_predict=200, timeout=180)
+    return answer or NO_ANSWER_PHRASE
