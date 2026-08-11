@@ -84,14 +84,21 @@ def ask_question(payload: AskRequest):
 
     session_id = payload.session_id
 
+    # Pull recent history for this session (empty list if no session_id,
+    # or if this is the first message in a new one) — needed BEFORE
+    # retrieval now, since it feeds query rewriting.
+    history = database.get_recent_messages(session_id) if session_id else []
+
+    # Rewrite follow-ups like "what about the ghee version?" into a
+    # standalone query ("what is the price of Ikhlas Ghee?") so semantic
+    # search can actually match the right chunks. No-op (and no extra
+    # LLM call) when there's no history yet.
+    search_query = llm.rewrite_query(question, history)
+
     try:
-        chunks = retrieval.retrieve_relevant_chunks(question)
+        chunks = retrieval.retrieve_relevant_chunks(search_query)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error searching documents: {e}")
-
-    # Pull recent history for this session (empty list if no session_id,
-    # or if this is the first message in a new one).
-    history = database.get_recent_messages(session_id) if session_id else []
 
     try:
         answer = llm.generate_answer(question, chunks, history)
