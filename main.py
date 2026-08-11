@@ -17,6 +17,7 @@ import shutil
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import database
@@ -26,6 +27,17 @@ import llm
 from config import UPLOAD_DIR
 
 app = FastAPI(title="RAG Chatbot", version="1.0")
+
+# Allows a frontend hosted on a different domain (e.g. a Streamlit Cloud
+# app) to call this API. Locked down to GET/POST/DELETE since that's all
+# this API exposes; origins left open since there's no user auth/cookies
+# here to protect — tighten to your specific frontend URL if you add any.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["*"],
+)
 
 # Create the PostgreSQL tables on startup (safe to call every time)
 database.init_db()
