@@ -190,3 +190,73 @@ curl -X DELETE http://127.0.0.1:8000/api/documents/<document_id>
 | Postgres connection error on startup | Confirm the server is running and the `rag_chatbot` database exists; check `POSTGRES_PASSWORD` matches your actual password |
 | Upload says "No extractable text found" | The PDF is likely scanned images, not real text — you'd need OCR (out of scope for this MVP) |
 | Slow first request | The embedding model and Ollama model both need to "warm up" on first use — subsequent requests are faster |
+
+## 10. Deploying online (Railway backend + Streamlit Cloud frontend)
+
+This gives you a public link to share, like your Hospital Management
+System project. Two pieces get deployed separately:
+
+- **Backend** (`main.py` + Postgres + Chroma) → Railway
+- **Frontend** (`streamlit_app.py`) → Streamlit Community Cloud
+
+They talk to each other over the internet, so **deploy the backend
+first** — you'll need its URL for the frontend's config.
+
+### 10a. Get a free Groq API key
+
+The deployed backend uses Groq instead of Ollama (running a full local
+LLM isn't practical on typical free cloud hosting — see the note in
+`config.py`).
+
+1. Go to https://console.groq.com and sign up (free)
+2. Create an API key
+3. Keep it handy for the Railway step below
+
+### 10b. Deploy the backend to Railway
+
+1. Go to https://railway.app, sign up, and create a **New Project**
+2. Choose **Deploy from GitHub repo** → select `Simple_RAG_Chatbot`
+   (you'll need to connect your GitHub account if you haven't)
+3. Railway will detect Python and start building automatically using
+   `requirements.txt` and the `Procfile`
+4. Click **+ New** → **Database** → **Add PostgreSQL** in the same
+   project. Railway automatically creates a `DATABASE_URL` variable and
+   makes it available to your backend service — no manual connection
+   string needed.
+5. Click **+ New** → **Volume**, mount it at `/data`. This is what makes
+   your uploaded documents and vector database survive redeploys
+   (without it, Railway's filesystem resets every deploy).
+6. On your backend service, go to **Variables** and add:
+   ```
+   DATA_DIR=/data
+   LLM_PROVIDER=groq
+   GROQ_API_KEY=<your key from 10a>
+   ```
+7. Go to **Settings → Networking → Generate Domain** to get a public
+   URL like `https://your-app.up.railway.app`. That's your backend's
+   public address — copy it, you'll need it next.
+8. Visit `<your-railway-url>/` in a browser — you should see the same
+   HTML chat UI you've been testing locally, now live on the internet.
+
+### 10c. Deploy the frontend to Streamlit Community Cloud
+
+1. Go to https://share.streamlit.io and sign in with GitHub
+2. Click **New app** → select the `Simple_RAG_Chatbot` repo, branch
+   `main`, and set the main file path to `streamlit_app.py`
+3. Before deploying, click **Advanced settings → Secrets** and add:
+   ```toml
+   API_BASE_URL = "https://your-app.up.railway.app"
+   ```
+   (use the exact URL from step 10b.7 — no trailing slash)
+4. Click **Deploy**. After the build finishes, you'll get a public link
+   like `https://your-app.streamlit.app` — that's what you share.
+
+### 10d. Notes
+
+- Both platforms redeploy automatically when I push changes to GitHub
+  for you — you'll just need to refresh the link.
+- Local dev keeps working exactly as before (Ollama, SQLite→Postgres
+  locally, etc.) — `LLM_PROVIDER` defaults to `"ollama"`, so nothing
+  changes unless you explicitly set it to `"groq"`.
+- If the Streamlit app shows a "can't reach the backend" error, double
+  check the `API_BASE_URL` secret matches your Railway domain exactly.
