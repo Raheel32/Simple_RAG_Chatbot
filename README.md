@@ -159,24 +159,25 @@ curl -X DELETE http://127.0.0.1:8000/api/documents/<document_id>
    `sentence-transformers` — this vector captures the *meaning* of the text.
 5. **Storage**: chunk text + vector + metadata (filename, page number) go
    into Chroma, a local vector database.
-6. **Question**: when you ask something, your question is embedded the same
-   way.
-7. **Retrieval**: Chroma finds the chunks whose vectors are closest in
-   meaning to your question (semantic search, not just keyword matching).
-8. **Generation**: those chunks are sent to the local LLM (via Ollama) with
-   an instruction to answer *only* from that context, and to say it doesn't
+6. **Question**: when you ask something, if there's conversation history
+   in your session, a quick LLM call first rewrites follow-ups like "what
+   about the ghee version?" into a standalone query ("what is the price
+   of Ikhlas Ghee?") — skipped entirely on the first message in a chat.
+7. **Embedding**: that (possibly rewritten) query is embedded the same
+   way as the document chunks.
+8. **Retrieval**: Chroma finds the chunks whose vectors are closest in
+   meaning to the query (semantic search, not just keyword matching).
+9. **Generation**: those chunks — plus your original question and recent
+   conversation turns — are sent to the local LLM (via Ollama) with an
+   instruction to answer *only* from that context, and to say it doesn't
    know if the answer isn't there (FR-08 — this is what prevents
    hallucination).
-9. **Answer + Source**: the answer and the filename/page it came from are
-   returned to the chat UI.
+10. **Answer + Source**: the answer and the filename/page it came from are
+    returned to the chat UI, and the turn is saved to this session's
+    history for future follow-ups.
 
 ## 8. Things to try next (from the BRD's "Future Enhancements")
 
-- Query rewriting: right now, retrieval only sees the raw question, not
-  the conversation history — so "what about the ghee version?" alone
-  won't semantically match "IKHLAS GHEE" as well as a reformulated query
-  would. A common upgrade is a small LLM call that rewrites the follow-up
-  into a standalone question before it hits retrieval.
 - Add simple login for the Admin role vs. Normal User role
 - Add a "confidence" indicator based on the retrieval distance score
   (already returned by `retrieval.py`, just not shown in the UI yet)
