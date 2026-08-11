@@ -2,15 +2,19 @@
 llm.py
 ------
 Implements FR-06 (AI Answer Generation) and FR-08 (Unknown Question
-Handling) by calling a locally-running Ollama model.
+Handling) by calling either a locally-running Ollama model, or Groq's
+hosted API — controlled by LLM_PROVIDER in config.py.
 
-Why Ollama? It's free, runs entirely on your own machine (no API key,
-no per-request cost), which matches your "free/local only" requirement.
-Install: https://ollama.com, then `ollama pull llama3.2`.
+Why two providers? Ollama is free and needs no API key, but it requires
+a real machine with real RAM to run on — great for local dev, a poor fit
+for a typical free/hobby cloud server. Groq's API is also free (within
+generous usage limits) and needs no local compute, so it's what the
+deployed version uses instead. Same functions, same call sites — only
+_call_llm's internals differ.
 """
 
 import requests
-from config import OLLAMA_BASE_URL, OLLAMA_MODEL
+from config import LLM_PROVIDER, OLLAMA_BASE_URL, OLLAMA_MODEL, GROQ_API_KEY, GROQ_MODEL
 
 NO_ANSWER_PHRASE = "Mujhe provided documents mein is question ka relevant answer nahi mila."
 
@@ -39,9 +43,7 @@ questions using the conversation so far. Rules:
 """
 
 
-def _call_ollama(system_prompt: str, prompt: str, num_predict: int, timeout: int = 180) -> str:
-    """Shared low-level call to Ollama's /api/generate, with consistent
-    error handling used by both answer generation and query rewriting."""
+def _call_ollama(system_prompt: str, prompt: str, num_predict: int, timeout: int) -> str:
     try:
         response = requests.post(
             f"{OLLAMA_BASE_URL}/api/generate",
@@ -85,6 +87,52 @@ def _call_ollama(system_prompt: str, prompt: str, num_predict: int, timeout: int
         raise RuntimeError(f"Error contacting Ollama: {e}")
 
 
+def _call_groq(system_prompt: str, prompt: str, num_predict: int, timeout: int) -> str:
+    if not GROQ_API_KEY:
+        raise RuntimeError(
+            "LLM_PROVIDER is set to 'groq' but GROQ_API_KEY is not set. "
+            "Get a free key at https://console.groq.com and set it as an "
+            "environment variable."
+        )
+    try:
+        response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+            json={
+                "model": GROQ_MODEL,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt},
+                ],
+                "temperature": 0,
+                "max_tokens": num_predict,
+            },
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data["choices"][0]["message"]["content"].strip()
+
+    except requests.exceptions.Timeout:
+        raise RuntimeError("Groq API did not respond in time. Try again shortly.")
+    except requests.exceptions.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.response.json().get("error", {}).get("message", "")
+        except Exception:
+            pass
+        raise RuntimeError(f"Groq API error: {detail or e}")
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f"Error contacting Groq: {e}")
+
+
+def _call_llm(system_prompt: str, prompt: str, num_predict: int, timeout: int = 180) -> str:
+    """Dispatches to whichever provider LLM_PROVIDER is set to."""
+    if LLM_PROVIDER == "groq":
+        return _call_groq(system_prompt, prompt, num_predict, timeout)
+    return _call_ollama(system_prompt, prompt, num_predict, timeout)
+
+
 def rewrite_query(question: str, history: list) -> str:
     """
     Rewrites a follow-up question into a standalone one, using recent
@@ -96,7 +144,7 @@ def rewrite_query(question: str, history: list) -> str:
     It costs extra latency, so it's skipped entirely when there's no
     history to rewrite against (first message in a conversation).
 
-    If this call fails for any reason (Ollama down, timeout, etc.), we
+    If this call fails for any reason (provider down, timeout, etc.), we
     fall back to the original question rather than failing the whole
     request — query rewriting is a nice-to-have, not essential.
     """
@@ -107,7 +155,7 @@ def rewrite_query(question: str, history: list) -> str:
     prompt = f"Conversation so far:\n{turns}\n\nFollow-up question: {question}\n\nStandalone question:"
 
     try:
-        rewritten = _call_ollama(REWRITE_SYSTEM_PROMPT, prompt, num_predict=60, timeout=30)
+        rewritten = _call_llm(REWRITE_SYSTEM_PROMPT, prompt, num_predict=60, timeout=30)
         return rewritten or question
     except RuntimeError:
         return question
@@ -131,7 +179,7 @@ def build_prompt(question: str, chunks: list, history: list = None) -> str:
 
 def generate_answer(question: str, chunks: list, history: list = None) -> str:
     """
-    Calls Ollama's /api/generate endpoint with the retrieved context and,
+    Calls the configured LLM provider with the retrieved context and,
     optionally, recent conversation turns so follow-up questions like
     "what about the ghee version?" can be understood.
     If retrieval found nothing at all, we skip the LLM call entirely
@@ -141,5 +189,5 @@ def generate_answer(question: str, chunks: list, history: list = None) -> str:
         return NO_ANSWER_PHRASE
 
     prompt = build_prompt(question, chunks, history)
-    answer = _call_ollama(SYSTEM_PROMPT, prompt, num_predict=200, timeout=180)
+    answer = _call_llm(SYSTEM_PROMPT, prompt, num_predict=200, timeout=180)
     return answer or NO_ANSWER_PHRASE
