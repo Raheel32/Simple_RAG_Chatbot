@@ -17,10 +17,21 @@ that might get committed to a repo.
 import psycopg2
 import psycopg2.extras
 from datetime import datetime
-from config import POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD
+from config import (
+    DATABASE_URL,
+    POSTGRES_HOST,
+    POSTGRES_PORT,
+    POSTGRES_DB,
+    POSTGRES_USER,
+    POSTGRES_PASSWORD,
+)
 
 
 def get_connection():
+    if DATABASE_URL:
+        # Railway (and most cloud providers) hand you one connection
+        # string that already encodes host/port/db/user/password.
+        return psycopg2.connect(DATABASE_URL)
     return psycopg2.connect(
         host=POSTGRES_HOST,
         port=POSTGRES_PORT,
