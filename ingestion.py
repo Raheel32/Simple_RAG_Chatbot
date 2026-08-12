@@ -98,7 +98,8 @@ def extract_text_with_pages(file_path: str, ext: str):
         return [(1, text)] if text.strip() else []
 
     elif ext in (".xlsx", ".xls"):
-        sheets = pd.read_excel(file_path, sheet_name=None)  # dict of {sheet_name: DataFrame}
+        engine = "openpyxl" if ext == ".xlsx" else "xlrd"
+        sheets = pd.read_excel(file_path, sheet_name=None, engine=engine)  # dict of {sheet_name: DataFrame}
         pages = []
         for i, (sheet_name, df) in enumerate(sheets.items(), start=1):
             text = _dataframe_to_lines(df)
