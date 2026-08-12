@@ -13,36 +13,59 @@ deployed version uses instead. Same functions, same call sites — only
 _call_llm's internals differ.
 """
 
+import re
 import requests
 from config import LLM_PROVIDER, OLLAMA_BASE_URL, OLLAMA_MODEL, GROQ_API_KEY, GROQ_MODEL
 
 NO_ANSWER_PHRASE = "Mujhe provided documents mein is question ka relevant answer nahi mila."
 
-SYSTEM_PROMPT = f"""You are a company knowledge-base assistant chatbot.
-
-There are two kinds of messages you'll get:
-
-1. CONVERSATIONAL messages — greetings ("hi", "hello"), small talk ("how
-   are you"), or meta questions about yourself ("what can you do", "who
-   are you"). For these, respond naturally and briefly in your own
-   words — you do NOT need the CONTEXT for these, and should NOT refuse
-   or say you couldn't find an answer. A good reply briefly explains you
-   can answer questions based on whatever documents have been uploaded.
-
-2. FACTUAL questions — anything asking for specific information (a
-   price, a policy, a number, a fact). For these:
-   - Answer using ONLY the CONTEXT provided below. Do not use outside
-     knowledge, and do not guess or make anything up.
-   - If the answer is not clearly contained in the CONTEXT, reply with
-     exactly this sentence and nothing else: "{NO_ANSWER_PHRASE}"
-   - Keep answers concise and directly address the question.
-
-Recent conversation turns may be included below the context. Use them
-only to understand what the user is referring to (e.g. "it", "that
-one", "the other size") — for factual questions, the CONTEXT is still
-the only source for facts in your answer, never something said earlier
-in the conversation.
+SYSTEM_PROMPT = f"""You are a company knowledge-base assistant.
+Answer the user's question using ONLY the CONTEXT provided below.
+Rules:
+- Do not use any outside knowledge. Do not guess or make anything up.
+- If the answer is not clearly contained in the CONTEXT, reply with
+  exactly this sentence and nothing else: "{NO_ANSWER_PHRASE}"
+- Keep answers concise and directly address the question.
+- Recent conversation turns may be included below the context. Use them
+  only to understand what the user is referring to (e.g. "it", "that
+  one", "the other size") — the CONTEXT is still the only source for
+  facts in your answer, never something said earlier in the conversation.
 """
+
+# --- Greeting / small-talk detection ----------------------------------------
+# Handled in CODE, not by asking the LLM to classify — a smaller/faster
+# model (like the Groq one used in production) can anchor on its own
+# earlier reply and repeat the same canned greeting for EVERY message,
+# including real document questions. A plain regex is faster and 100%
+# reliable for the narrow case it needs to catch: short greetings only.
+_GREETING_PATTERN = re.compile(
+    r"^\s*("
+    r"hi+|hello+|hey+|hii+|salam|assalam.*|good\s*(morning|afternoon|evening)|"
+    r"how\s*are\s*you|what'?s\s*up|"
+    r"who\s*are\s*you|what\s*can\s*you\s*do|what\s*is\s*your\s*name|"
+    r"thanks?|thank\s*you|bye|goodbye|ok(ay)?"
+    r")[\s!.?]*$",
+    re.IGNORECASE,
+)
+
+
+def is_greeting(question: str) -> bool:
+    """True only for short, unambiguous greetings/small-talk — anything
+    with real question content (even 'what is in the file?') should NOT
+    match, so it goes through normal document-grounded retrieval."""
+    return bool(_GREETING_PATTERN.match(question.strip()))
+
+
+def greeting_reply(has_documents: bool) -> str:
+    if has_documents:
+        return (
+            "Hi! I'm your document assistant — ask me anything about the "
+            "documents you've uploaded and I'll answer based on their content."
+        )
+    return (
+        "Hi! I'm your document assistant. Upload a PDF, DOCX, TXT, CSV, or "
+        "Excel file and I can answer questions about it."
+    )
 
 
 REWRITE_SYSTEM_PROMPT = """You rewrite follow-up questions into standalone
