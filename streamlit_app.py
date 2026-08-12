@@ -63,10 +63,10 @@ with st.sidebar:
         # re-uploading the same file object on every rerun.
         upload_key = f"{uploaded_file.name}_{uploaded_file.size}"
         if st.session_state.get("last_upload_key") != upload_key:
-            with st.spinner(f"Processing {uploaded_file.name}..."):
+            with st.spinner(f"Processing {uploaded_file.name}... (larger files can take a minute or two)"):
                 try:
                     files = {"file": (uploaded_file.name, uploaded_file.getvalue())}
-                    resp = requests.post(f"{API_BASE_URL}/api/documents/upload", files=files, timeout=120)
+                    resp = requests.post(f"{API_BASE_URL}/api/documents/upload", files=files, timeout=300)
                     if resp.ok:
                         st.session_state.last_upload_key = upload_key
                         st.success(f"Added {uploaded_file.name}")
