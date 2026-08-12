@@ -96,6 +96,17 @@ def ask_question(payload: AskRequest):
 
     session_id = payload.session_id
 
+    # Greetings/small talk are handled in code, not by the LLM — see
+    # llm.is_greeting for why. Skips retrieval and the LLM call entirely:
+    # faster, and immune to the model repeating a canned reply for
+    # everything else.
+    if llm.is_greeting(question):
+        answer = llm.greeting_reply(has_documents=bool(database.list_documents()))
+        if session_id:
+            database.add_message(session_id, "user", question)
+            database.add_message(session_id, "assistant", answer)
+        return {"answer": answer, "sources": [], "session_id": session_id}
+
     # Pull recent history for this session (empty list if no session_id,
     # or if this is the first message in a new one) — needed BEFORE
     # retrieval now, since it feeds query rewriting.
