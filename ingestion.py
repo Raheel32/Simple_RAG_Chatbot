@@ -98,6 +98,23 @@ def extract_text_with_pages(file_path: str, ext: str):
         return [(1, text)] if text.strip() else []
 
     elif ext in (".xlsx", ".xls"):
+        # Some POS/inventory/web-export tools produce files with a .xls
+        # extension that are actually HTML tables underneath, not real
+        # binary or OOXML spreadsheets. Sniff the first bytes to catch
+        # this before handing it to the binary Excel parser, which would
+        # otherwise fail with a cryptic "unsupported format" error.
+        with open(file_path, "rb") as f:
+            head = f.read(512)
+        sniff = head.lstrip(b"\xef\xbb\xbf").lstrip().lower()  # strip BOM + whitespace
+        if sniff.startswith((b"<html", b"<!doctype", b"<table")):
+            tables = pd.read_html(file_path)
+            pages = []
+            for i, df in enumerate(tables, start=1):
+                text = _dataframe_to_lines(df)
+                if text.strip():
+                    pages.append((i, text))
+            return pages
+
         engine = "openpyxl" if ext == ".xlsx" else "xlrd"
         sheets = pd.read_excel(file_path, sheet_name=None, engine=engine)  # dict of {sheet_name: DataFrame}
         pages = []
