@@ -107,7 +107,7 @@ def extract_text_with_pages(file_path: str, ext: str):
             head = f.read(512)
         sniff = head.lstrip(b"\xef\xbb\xbf").lstrip().lower()  # strip BOM + whitespace
         if sniff.startswith((b"<html", b"<!doctype", b"<table")):
-            tables = pd.read_html(file_path)
+            tables = pd.read_html(file_path, flavor="lxml")
             pages = []
             for i, df in enumerate(tables, start=1):
                 text = _dataframe_to_lines(df)
