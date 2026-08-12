@@ -22,6 +22,7 @@ import os
 import uuid
 import pymupdf as fitz  # PyMuPDF — 'fitz' import name is deprecated, but keeping the alias so the rest of this file's fitz.* calls don't need renaming
 import docx
+import pandas as pd
 import chromadb
 from sentence_transformers import SentenceTransformer
 
@@ -45,11 +46,29 @@ chroma_client = chromadb.PersistentClient(path=CHROMA_DIR)
 collection = chroma_client.get_or_create_collection(name=COLLECTION_NAME)
 
 
-# --- Step 1: Text extraction (supports PDF, DOCX, TXT) ---------------------
+# --- Step 1: Text extraction (PDF, DOCX, TXT, CSV, XLSX, XLS) --------------
+def _dataframe_to_lines(df: pd.DataFrame) -> str:
+    """
+    Converts a spreadsheet's rows into readable "Column: value" lines —
+    one row per line, matching the line-aware chunker's assumption that
+    each line is one self-contained record (same approach that worked
+    well for the tabular price list PDF).
+    """
+    lines = []
+    columns = [str(c) for c in df.columns]
+    for _, row in df.iterrows():
+        parts = [f"{col}: {row[col]}" for col in columns if pd.notna(row[col])]
+        if parts:
+            lines.append(" | ".join(parts))
+    return "\n".join(lines)
+
+
 def extract_text_with_pages(file_path: str, ext: str):
     """
     Returns a list of (page_number, text) tuples.
-    For TXT/DOCX (no real "pages"), everything is treated as page 1.
+    For TXT/DOCX/CSV (no real "pages"), everything is treated as page 1.
+    For XLSX with multiple sheets, each sheet is treated as its own "page"
+    so sources can point to which sheet an answer came from.
     """
     ext = ext.lower()
 
@@ -72,6 +91,20 @@ def extract_text_with_pages(file_path: str, ext: str):
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             text = f.read()
         return [(1, text)] if text.strip() else []
+
+    elif ext == ".csv":
+        df = pd.read_csv(file_path)
+        text = _dataframe_to_lines(df)
+        return [(1, text)] if text.strip() else []
+
+    elif ext in (".xlsx", ".xls"):
+        sheets = pd.read_excel(file_path, sheet_name=None)  # dict of {sheet_name: DataFrame}
+        pages = []
+        for i, (sheet_name, df) in enumerate(sheets.items(), start=1):
+            text = _dataframe_to_lines(df)
+            if text.strip():
+                pages.append((i, f"[Sheet: {sheet_name}]\n{text}"))
+        return pages
 
     else:
         raise ValueError(f"Unsupported file type: {ext}")
