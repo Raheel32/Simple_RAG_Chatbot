@@ -95,13 +95,25 @@ def ask_question(payload: AskRequest):
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
     session_id = payload.session_id
+    has_documents = bool(database.list_documents())
+
+    # With no documents uploaded at all, there's nothing to search —
+    # respond warmly and invite an upload instead of running the message
+    # through strict document-grounded retrieval (which would correctly,
+    # but unhelpfully, refuse almost everything).
+    if not has_documents:
+        answer = llm.greeting_reply(has_documents=False)
+        if session_id:
+            database.add_message(session_id, "user", question)
+            database.add_message(session_id, "assistant", answer)
+        return {"answer": answer, "sources": [], "session_id": session_id}
 
     # Greetings/small talk are handled in code, not by the LLM — see
     # llm.is_greeting for why. Skips retrieval and the LLM call entirely:
     # faster, and immune to the model repeating a canned reply for
     # everything else.
     if llm.is_greeting(question):
-        answer = llm.greeting_reply(has_documents=bool(database.list_documents()))
+        answer = llm.greeting_reply(has_documents=True)
         if session_id:
             database.add_message(session_id, "user", question)
             database.add_message(session_id, "assistant", answer)
