@@ -48,7 +48,13 @@ CHUNK_OVERLAP = 100
 
 # --- Retrieval -----------------------------------------------------------
 # How many chunks to pull back from the vector DB per question.
-TOP_K = 3
+TOP_K = 5
+
+# When the whole knowledge base has this many chunks or fewer, retrieval
+# returns ALL of them instead of doing similarity search — see
+# retrieval.py for why. 40 chunks at ~500 chars each is roughly a few
+# pages of text, comfortably within any LLM's context window.
+FULL_CONTEXT_CHUNK_THRESHOLD = 40
 
 # --- LLM provider ----------------------------------------------------------
 # Two options:
