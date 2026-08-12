@@ -56,7 +56,7 @@ with st.sidebar:
     st.header("📚 Knowledge Base")
 
     uploaded_file = st.file_uploader(
-        "Upload PDF / DOCX / TXT", type=["pdf", "docx", "txt"], label_visibility="collapsed"
+        "Upload PDF / DOCX / TXT / CSV / XLSX", type=["pdf", "docx", "txt", "csv", "xlsx", "xls"], label_visibility="collapsed"
     )
     if uploaded_file is not None:
         # Streamlit re-runs on every interaction, so guard against
