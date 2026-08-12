@@ -42,7 +42,7 @@ app.add_middleware(
 # Create the PostgreSQL tables on startup (safe to call every time)
 database.init_db()
 
-ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".csv", ".xlsx", ".xls"}
 
 
 class AskRequest(BaseModel):
